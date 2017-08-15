@@ -122,15 +122,6 @@ namespace DivvyUp
 
         private async Task ReapWorker(string workerId)
         {
-            /*job = @redis.hget("#{@namespace}::worker::#{worker_id}::job", 'work')
-    if job
-      job = JSON.parse(job)
-      log(:info, 'Requeuing reaped work', id: worker_id, job: job)
-      @redis.lpush("#{@namespace}::queue::#{job['queue']}", job.to_json)
-    end
-    @redis.del("#{@namespace}::worker::#{worker_id}::job")
-    @redis.del("#{@namespace}::worker::#{worker_id}")
-    @redis.hdel("#{@namespace}::workers", worker_id)*/
             var jobJson = await _redis.HashGetAsync($"{_namespace}::worker::{workerId}::job", "work");
             if (jobJson.HasValue)
             {
