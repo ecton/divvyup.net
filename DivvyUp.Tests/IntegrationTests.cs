@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Newtonsoft.Json;
@@ -21,10 +22,11 @@ namespace DivvyUp.Tests
 
             public override Task Execute()
             {
+                if (_command == "fail") throw new ArgumentException("Expected to fail");
+                if (_command == "delay") Thread.Sleep(100);
+
                 lock (_counters)
                 {
-                    if (_command == "fail") throw new ArgumentException("Expected to fail");
-
                     int current;
                     _counters.TryGetValue(_command, out current);
                     _counters[_command] = current + 1;
@@ -84,6 +86,33 @@ namespace DivvyUp.Tests
             await worker.Work(false);
 
             Assert.Equal(1, TestJob.Count("default"));
+        }
+
+        [Fact]
+        public async Task WorkerPool()
+        {
+            var service = new Service(new MockRedisDatabase());
+            var pool = new WorkerPool(service);
+            pool.AddWorker("test");
+            pool.AddWorkers(3, "test");
+            foreach (var worker in pool.Workers)
+            {
+                worker.CheckinInterval = 1;
+                worker.DelayAfterInternalError = 0;
+                worker.NoWorkCheckInterval = 0;
+            }
+            pool.WorkInBackground();
+            for (int i = 0; i < 40; i++)
+            {
+                await service.Enqueue(new TestJob("delay"));
+            }
+
+            var start = DateTime.UtcNow;
+            while (DateTime.UtcNow - start < TimeSpan.FromSeconds(3.5)) ;
+
+            await pool.Stop();
+
+            Assert.Equal(40, TestJob.Count("delay"));
         }
     }
 }

@@ -10,6 +10,123 @@ namespace DivvyUp.Tests
     class MockRedisDatabase : IDatabase
     {
         private Dictionary<string, object> _store = new Dictionary<string, object>();
+
+        public Task<long> ListRightPushAsync(RedisKey key, RedisValue value, When when = When.Always, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                if (!_store.ContainsKey(key.ToString()))
+                {
+                    _store[key.ToString()] = new List<string>();
+                }
+                var set = (List<string>)_store[key.ToString()];
+                set.Add(value.ToString());
+                return Task.FromResult(1L);
+            }
+        }
+
+        public Task<bool> HashDeleteAsync(RedisKey key, RedisValue hashField, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                object hashObj;
+                if (_store.TryGetValue(key, out hashObj) && hashObj is Dictionary<string, string> hash)
+                {
+                    hash.Remove(hashField);
+                }
+                return Task.FromResult(true);
+            }
+        }
+
+        public Task<HashEntry[]> HashGetAllAsync(RedisKey key, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                List<HashEntry> entries = new List<HashEntry>();
+                object hashObj;
+                if (_store.TryGetValue(key, out hashObj) && hashObj is Dictionary<string, string> hash)
+                {
+                    foreach (var entry in hash)
+                    {
+                        entries.Add(new HashEntry(entry.Key, entry.Value));
+                    }
+                }
+                return Task.FromResult(entries.ToArray());
+            }
+        }
+
+        public Task<RedisValue> HashGetAsync(RedisKey key, RedisValue hashField, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                object hashObj;
+                if (_store.TryGetValue(key, out hashObj) && hashObj is Dictionary<string, string> hash)
+                {
+                    string value;
+                    hash.TryGetValue(hashField, out value);
+                    return Task.FromResult((RedisValue)value);
+                }
+                return Task.FromResult(RedisValue.Null);
+            }
+        }
+
+        public Task<bool> SetAddAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                if (!_store.ContainsKey(key.ToString()))
+                {
+                    _store[key.ToString()] = new HashSet<string>();
+                }
+                var set = (HashSet<string>)_store[key.ToString()];
+                set.Add(value.ToString());
+                return Task.FromResult(true);
+            }
+        }
+
+        public Task<RedisValue> ListLeftPopAsync(RedisKey key, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                if (!_store.ContainsKey(key.ToString()))
+                {
+                    _store[key.ToString()] = new List<string>();
+                }
+                var set = (List<string>)_store[key.ToString()];
+                if (set.Count > 0)
+                {
+                    var output = set[0];
+                    set.RemoveAt(0);
+                    return Task<RedisValue>.FromResult((RedisValue)output);
+                }
+                return Task<RedisValue>.FromResult(RedisValue.Null);
+            }
+        }
+
+        public Task<bool> KeyDeleteAsync(RedisKey key, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                _store.Remove(key.ToString());
+                return Task<bool>.FromResult(true);
+            }
+        }
+
+        public Task<bool> HashSetAsync(RedisKey key, RedisValue hashField, RedisValue value, When when = When.Always, CommandFlags flags = CommandFlags.None)
+        {
+            lock (_store)
+            {
+                if (!_store.ContainsKey(key.ToString()))
+                {
+                    _store[key.ToString()] = new Dictionary<string, string>();
+                }
+                var set = (Dictionary<string, string>)_store[key.ToString()];
+                set[hashField.ToString()] = value.ToString();
+                return Task<bool>.FromResult(true);
+            }
+        }
+
+        #region Unimplemented
         public int Database => throw new NotImplementedException();
 
         public ConnectionMultiplexer Multiplexer => throw new NotImplementedException();
@@ -194,16 +311,6 @@ namespace DivvyUp.Tests
             throw new NotImplementedException();
         }
 
-        public Task<bool> HashDeleteAsync(RedisKey key, RedisValue hashField, CommandFlags flags = CommandFlags.None)
-        {
-            object hashObj;
-            if (_store.TryGetValue(key, out hashObj) && hashObj is Dictionary<string, string> hash)
-            {
-                hash.Remove(hashField);
-            }
-            return Task.FromResult(true);
-        }
-
         public Task<long> HashDeleteAsync(RedisKey key, RedisValue[] hashFields, CommandFlags flags = CommandFlags.None)
         {
             throw new NotImplementedException();
@@ -232,32 +339,6 @@ namespace DivvyUp.Tests
         public HashEntry[] HashGetAll(RedisKey key, CommandFlags flags = CommandFlags.None)
         {
             throw new NotImplementedException();
-        }
-
-        public Task<HashEntry[]> HashGetAllAsync(RedisKey key, CommandFlags flags = CommandFlags.None)
-        {
-            List<HashEntry> entries = new List<HashEntry>();
-            object hashObj;
-            if (_store.TryGetValue(key, out hashObj) && hashObj is Dictionary<string, string> hash)
-            {
-                foreach (var entry in hash)
-                {
-                    entries.Add(new HashEntry(entry.Key, entry.Value));
-                }
-            }
-            return Task.FromResult(entries.ToArray());
-        }
-
-        public Task<RedisValue> HashGetAsync(RedisKey key, RedisValue hashField, CommandFlags flags = CommandFlags.None)
-        {
-            object hashObj;
-            if (_store.TryGetValue(key, out hashObj) && hashObj is Dictionary<string, string> hash)
-            {
-                string value;
-                hash.TryGetValue(hashField, out value);
-                return Task.FromResult((RedisValue)value);
-            }
-            return Task.FromResult(RedisValue.Null);
         }
 
         public Task<RedisValue[]> HashGetAsync(RedisKey key, RedisValue[] hashFields, CommandFlags flags = CommandFlags.None)
@@ -328,17 +409,6 @@ namespace DivvyUp.Tests
         public Task HashSetAsync(RedisKey key, HashEntry[] hashFields, CommandFlags flags = CommandFlags.None)
         {
             throw new NotImplementedException();
-        }
-
-        public Task<bool> HashSetAsync(RedisKey key, RedisValue hashField, RedisValue value, When when = When.Always, CommandFlags flags = CommandFlags.None)
-        {
-            if (!_store.ContainsKey(key.ToString()))
-            {
-                _store[key.ToString()] = new Dictionary<string, string>();
-            }
-            var set = (Dictionary<string, string>)_store[key.ToString()];
-            set[hashField.ToString()] = value.ToString();
-            return Task<bool>.FromResult(true);
         }
 
         public RedisValue[] HashValues(RedisKey key, CommandFlags flags = CommandFlags.None)
@@ -434,12 +504,6 @@ namespace DivvyUp.Tests
         public long KeyDelete(RedisKey[] keys, CommandFlags flags = CommandFlags.None)
         {
             throw new NotImplementedException();
-        }
-
-        public Task<bool> KeyDeleteAsync(RedisKey key, CommandFlags flags = CommandFlags.None)
-        {
-            _store.Remove(key.ToString());
-            return Task<bool>.FromResult(true);
         }
 
         public Task<long> KeyDeleteAsync(RedisKey[] keys, CommandFlags flags = CommandFlags.None)
@@ -602,22 +666,6 @@ namespace DivvyUp.Tests
             throw new NotImplementedException();
         }
 
-        public Task<RedisValue> ListLeftPopAsync(RedisKey key, CommandFlags flags = CommandFlags.None)
-        {   
-            if (!_store.ContainsKey(key.ToString()))
-            {
-                _store[key.ToString()] = new List<string>();
-            }
-            var set = (List<string>)_store[key.ToString()];
-            if (set.Count > 0)
-            {
-                var output = set[0];
-                set.RemoveAt(0);
-                return Task<RedisValue>.FromResult((RedisValue)output);
-            }
-            return Task<RedisValue>.FromResult(RedisValue.Null);
-        }
-
         public long ListLeftPush(RedisKey key, RedisValue value, When when = When.Always, CommandFlags flags = CommandFlags.None)
         {
             throw new NotImplementedException();
@@ -696,20 +744,6 @@ namespace DivvyUp.Tests
         public long ListRightPush(RedisKey key, RedisValue[] values, CommandFlags flags = CommandFlags.None)
         {
             throw new NotImplementedException();
-        }
-
-        public Task<long> ListRightPushAsync(RedisKey key, RedisValue value, When when = When.Always, CommandFlags flags = CommandFlags.None)
-        {
-            return Task<long>.Run(() =>
-            {
-                if (!_store.ContainsKey(key.ToString()))
-                {
-                    _store[key.ToString()] = new List<string>();
-                }
-                var set = (List<string>)_store[key.ToString()];
-                set.Add(value.ToString());
-                return 1L;
-            });
         }
 
         public Task<long> ListRightPushAsync(RedisKey key, RedisValue[] values, CommandFlags flags = CommandFlags.None)
@@ -845,20 +879,6 @@ namespace DivvyUp.Tests
         public long SetAdd(RedisKey key, RedisValue[] values, CommandFlags flags = CommandFlags.None)
         {
             throw new NotImplementedException();
-        }
-
-        public Task<bool> SetAddAsync(RedisKey key, RedisValue value, CommandFlags flags = CommandFlags.None)
-        {
-            return Task<bool>.Run(() =>
-            {
-                if (!_store.ContainsKey(key.ToString()))
-                {
-                    _store[key.ToString()] = new HashSet<string>();
-                }
-                var set = (HashSet<string>)_store[key.ToString()];
-                set.Add(value.ToString());
-                return true;
-            });
         }
 
         public Task<long> SetAddAsync(RedisKey key, RedisValue[] values, CommandFlags flags = CommandFlags.None)
@@ -1475,5 +1495,6 @@ namespace DivvyUp.Tests
         {
             throw new NotImplementedException();
         }
+        #endregion
     }
 }

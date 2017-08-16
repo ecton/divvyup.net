@@ -11,8 +11,10 @@ namespace DivvyUp
         private Service _service;
         public string[] Queues { get; }
         public string WorkerId { get; }
-
+        private bool _shuttingDown;
+        private int _running;
         public int CheckinInterval { get; set; } = 30;
+        public int NoWorkCheckInterval { get; set; } = 5;
         public int DelayAfterInternalError { get; set; } = 5;
 
         public Worker(params string[] queues) : this(DivvyUp.Service, queues) { }
@@ -28,8 +30,10 @@ namespace DivvyUp
 
         public async Task Work(bool forever = true)
         {
+            _shuttingDown = false;
+            lock(this) _running += 1;
             StartupBackgroundCheckin(forever);
-            while (true)
+            while (!_shuttingDown)
             {
                 try
                 {
@@ -37,11 +41,12 @@ namespace DivvyUp
                 }
                 catch (Exception exc)
                 {
-                    OnError(exc);
+                    if (OnError != null) OnError(exc);
                     Thread.Sleep(DelayAfterInternalError * 1000);
                 }
                 if (!forever) break;
             }
+            lock (this) _running -= 1;
         }
 
         private Thread _backgroundCheckinThread;
@@ -60,7 +65,8 @@ namespace DivvyUp
 
         private void BackgroundCheckin(bool forever)
         {
-            while (true)
+            lock (this) _running += 1;
+            while (!_shuttingDown)
             {
                 try
                 {
@@ -68,11 +74,12 @@ namespace DivvyUp
                 }
                 catch (Exception exc)
                 {
-                    OnError(exc);
+                    if (OnError != null) OnError(exc);
                 }
                 if (!forever) break;
                 Thread.Sleep(CheckinInterval * 1000);
             }
+            lock (this) _running -= 1;
         }
 
         private async Task RetrieveAndExecuteWork()
@@ -89,13 +96,33 @@ namespace DivvyUp
                 catch (Exception exc)
                 {
                     await _service.FailWork(this, job, exc);
-                    OnError(exc);
+                    if (OnError != null) OnError(exc);
                 }
             }
             else
             {
-                Thread.Sleep(5 * 1000);
+                Thread.Sleep(NoWorkCheckInterval * 1000);
             }
+        }
+
+        public void Shutdown()
+        {
+            _shuttingDown = true;
+        }
+
+        public Task Stop()
+        {
+            Shutdown();
+            return Task.Run(() => {
+                while (true)
+                {
+                    lock (this)
+                    {
+                        if (_running == 0) return;
+                    }
+                    Thread.Sleep(100);
+                }
+            });
         }
     }
 }
