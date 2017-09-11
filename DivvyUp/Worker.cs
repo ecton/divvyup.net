@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using NLog;
 
 namespace DivvyUp
 {
@@ -28,6 +29,8 @@ namespace DivvyUp
         public delegate void OnErrorDelegate(Exception exc);
         public event OnErrorDelegate OnError;
 
+        private Logger Logger { get => LogManager.GetLogger($"DivvyUp.Worker.{WorkerId}"); }
+        
         public async Task Work(bool forever = true)
         {
             _shuttingDown = false;
@@ -70,10 +73,12 @@ namespace DivvyUp
             {
                 try
                 {
+                    Logger.Debug($"Checking In");
                     _service.Checkin(this).Wait();
                 }
                 catch (Exception exc)
                 {
+                    Logger.Error(exc, $"Error checking in");
                     if (OnError != null) OnError(exc);
                 }
                 if (!forever) break;
@@ -89,12 +94,16 @@ namespace DivvyUp
             {
                 try
                 {
+                    Logger.Debug($"Starting work {job}");
                     await _service.StartWork(this, job);
+                    Logger.Debug($"Executing");
                     await job.Execute();
+                    Logger.Debug($"Completing");
                     await _service.CompleteWork(this, job);
                 }
                 catch (Exception exc)
                 {
+                    Logger.Error(exc, $"Error executing work");
                     await _service.FailWork(this, job, exc);
                     if (OnError != null) OnError(exc);
                 }

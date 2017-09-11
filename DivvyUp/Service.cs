@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using StackExchange.Redis;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NLog;
 
 namespace DivvyUp
 {
@@ -17,6 +18,8 @@ namespace DivvyUp
             _redis = redis ?? DivvyUp.RedisDatabase;
             _namespace = ns ?? DivvyUp.Namespace;
         }
+
+        private Logger Logger { get => LogManager.GetCurrentClassLogger(); }
 
         public Task Enqueue(Job job)
         {
