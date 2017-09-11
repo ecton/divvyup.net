@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using StackExchange.Redis;
@@ -33,7 +34,7 @@ namespace DivvyUp
         {
             return new
             {
-                @class = job.GetType().AssemblyQualifiedName,
+                @class = job.GetType().FullName,
                 queue = job.Queue,
                 args = job.Arguments
             };
@@ -52,13 +53,38 @@ namespace DivvyUp
             );
         }
 
+        private Dictionary<string, Type> _workers = new Dictionary<string, Type>();
+        public void RegisterWorkersFromAssembly(Type type)
+        {
+            RegisterWorkersFromAssembly(type.GetTypeInfo().Assembly);
+        }
+        public void RegisterWorkersFromAssembly(Assembly assembly)
+        {
+            lock (_workers)
+            {
+                foreach (var type in assembly.GetTypes().Where(t => t.GetTypeInfo().IsSubclassOf(typeof(Job))))
+                {
+                    _workers[type.FullName] = type;
+                }
+            }
+        }
+        internal Type GetWorker(string name)
+        {
+            Type workerType;
+            lock (_workers)
+            {
+                _workers.TryGetValue(name, out workerType);
+                return workerType;
+            }
+        }
+
         internal async Task<Job> GetWork(Worker worker)
         {
             await ReclaimStuckWork(worker);
             var payload = await RetrieveNewWork(worker);
             if (payload == null) return null;
 
-            var jobCls = Type.GetType(payload["class"].ToString());
+            var jobCls = GetWorker(payload["class"].ToString());
             if (jobCls == null) throw new TypeLoadException($"{payload["class"]} not found.");
 
             var jsonArguments = payload["args"] as JArray;

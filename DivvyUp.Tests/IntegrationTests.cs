@@ -49,6 +49,7 @@ namespace DivvyUp.Tests
         public async Task FullTest()
         {
             var service = new Service(new MockRedisDatabase());
+            service.RegisterWorkersFromAssembly(typeof(TestJob));
             var worker = new Worker(service, "test");
             Exception workerException = null;
             worker.OnError += (exc) => workerException = exc;
@@ -74,12 +75,13 @@ namespace DivvyUp.Tests
             await redis.HashSetAsync($"divvyup::worker::badworkerbad::job", "started_at", DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60 * 60);
             await redis.HashSetAsync($"divvyup::worker::badworkerbad::job", "work", JsonConvert.SerializeObject(new
             {
-                @class = typeof(TestJob).AssemblyQualifiedName,
+                @class = typeof(TestJob).FullName,
                 queue = "test",
                 args = new object[0]
             }));
 
             var service = new Service(redis);
+            service.RegisterWorkersFromAssembly(typeof(TestJob));
             var worker = new Worker(service, "test");
             worker.CheckinInterval = 1;
             worker.DelayAfterInternalError = 0;
@@ -92,6 +94,7 @@ namespace DivvyUp.Tests
         public async Task WorkerPool()
         {
             var service = new Service(new MockRedisDatabase());
+            service.RegisterWorkersFromAssembly(typeof(TestJob));
             var pool = new WorkerPool(service);
             pool.AddWorker("test");
             pool.AddWorkers(3, "test");

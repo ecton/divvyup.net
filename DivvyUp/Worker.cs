@@ -40,10 +40,12 @@ namespace DivvyUp
             {
                 try
                 {
+                    Logger.Debug("Looking for work");
                     await RetrieveAndExecuteWork();
                 }
                 catch (Exception exc)
                 {
+                    Logger.Error(exc, "Error looking for work");
                     if (OnError != null) OnError(exc);
                     Thread.Sleep(DelayAfterInternalError * 1000);
                 }
