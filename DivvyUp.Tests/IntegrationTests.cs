@@ -48,8 +48,8 @@ namespace DivvyUp.Tests
         [Fact]
         public async Task FullTest()
         {
+            DivvyUp.RegisterJobsFromAssembly(typeof(TestJob));
             var service = new Service(new MockRedisDatabase());
-            service.RegisterWorkersFromAssembly(typeof(TestJob));
             var worker = new Worker(service, "test");
             Exception workerException = null;
             worker.OnError += (exc) => workerException = exc;
@@ -80,8 +80,8 @@ namespace DivvyUp.Tests
                 args = new object[0]
             }));
 
+            DivvyUp.RegisterJobsFromAssembly(typeof(TestJob));
             var service = new Service(redis);
-            service.RegisterWorkersFromAssembly(typeof(TestJob));
             var worker = new Worker(service, "test");
             worker.CheckinInterval = 1;
             worker.DelayAfterInternalError = 0;
@@ -93,8 +93,8 @@ namespace DivvyUp.Tests
         [Fact]
         public async Task WorkerPool()
         {
+            DivvyUp.RegisterJobsFromAssembly(typeof(TestJob));
             var service = new Service(new MockRedisDatabase());
-            service.RegisterWorkersFromAssembly(typeof(TestJob));
             var pool = new WorkerPool(service);
             pool.AddWorker("test");
             pool.AddWorkers(3, "test");
