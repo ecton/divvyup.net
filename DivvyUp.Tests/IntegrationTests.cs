@@ -122,7 +122,7 @@ namespace DivvyUp.Tests
         public async Task RetryTest()
         {
             var service = new Service(new MockRedisDatabase());
-            service.RegisterWorkersFromAssembly(typeof(TestJob));
+            DivvyUp.RegisterJobsFromAssembly(typeof(TestJob));
             var worker = new Worker(service, "test");
             Exception workerException = null;
             worker.OnError += (exc) => workerException = exc;
