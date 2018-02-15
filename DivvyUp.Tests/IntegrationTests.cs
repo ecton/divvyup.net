@@ -117,5 +117,27 @@ namespace DivvyUp.Tests
 
             Assert.Equal(40, TestJob.Count("delay"));
         }
+
+        [Fact]
+        public async Task RetryTest()
+        {
+            var service = new Service(new MockRedisDatabase());
+            service.RegisterWorkersFromAssembly(typeof(TestJob));
+            var worker = new Worker(service, "test");
+            Exception workerException = null;
+            worker.OnError += (exc) => workerException = exc;
+            worker.CheckinInterval = 1;
+            worker.DelayAfterInternalError = 0;
+            var job = new TestJob("fail");
+            job.Retries = 1;
+            await service.Enqueue(job);
+            await worker.Work(false);
+            Assert.NotNull(workerException);
+            workerException = null;
+            await worker.Work(false);
+            Assert.NotNull(workerException);
+
+            await worker.Work(false);
+        }
     }
 }
