@@ -22,27 +22,28 @@ namespace DivvyUp
 
         private Logger Logger { get => LogManager.GetCurrentClassLogger(); }
 
-        public Task Enqueue(Job job)
+        public Task Enqueue(Job job, bool retry = false)
         {
             return Task.WhenAll(
                 _redis.SetAddAsync($"{_namespace}::queues", job.Queue),
-                _redis.ListRightPushAsync($"{_namespace}::queue::{job.Queue}", SerializeWork(job))
+                _redis.ListRightPushAsync($"{_namespace}::queue::{job.Queue}", SerializeWork(job, retry))
             );
         }
 
-        private object GetWork(Job job)
+        private object GetWork(Job job, bool retry)
         {
             return new
             {
                 @class = job.GetType().FullName,
                 queue = job.Queue,
-                args = job.Arguments
+                args = job.Arguments,
+                retries = (retry ? job.Retries - 1 : job.Retries),
             };
         }
 
-        private string SerializeWork(Job job)
+        private string SerializeWork(Job job, bool retry)
         {
-            return JsonConvert.SerializeObject(GetWork(job));
+            return JsonConvert.SerializeObject(GetWork(job, retry));
         }
 
         internal Task Checkin(Worker worker)
@@ -82,7 +83,10 @@ namespace DivvyUp
                         throw new ArgumentException($"No value provided for parameter {parameters[i].Name}");
                     }
                 }
-                return (Job)constructor.Invoke(arguments);
+
+                var job = (Job)constructor.Invoke(arguments);
+                job.Retries = (payload["retries"] != null ? (int)payload["retries"] : 0);
+                return job;
             }
             throw new TargetException($"Could not find constructor for {jobCls}");
         }
@@ -91,7 +95,7 @@ namespace DivvyUp
         {
             return Task.WhenAll(
                 _redis.HashSetAsync($"{_namespace}::worker::{worker.WorkerId}::job", "started_at", DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
-                _redis.HashSetAsync($"{_namespace}::worker::{worker.WorkerId}::job", "work", SerializeWork(job))
+                _redis.HashSetAsync($"{_namespace}::worker::{worker.WorkerId}::job", "work", SerializeWork(job, false))
             );
         }
 
@@ -100,15 +104,23 @@ namespace DivvyUp
             return _redis.KeyDeleteAsync($"{_namespace}::worker::{worker.WorkerId}::job");
         }
 
-        internal Task FailWork(Worker worker, Job job, Exception exc)
+        internal async Task FailWork(Worker worker, Job job, Exception exc)
         {
-            return _redis.ListRightPushAsync($"{_namespace}::failed", JsonConvert.SerializeObject(new
+            if (job.Retries > 0)
             {
-                work = GetWork(job),
-                worker = worker.WorkerId,
-                message = exc.Message,
-                backtrace = exc.StackTrace.Split(new string[] { Environment.NewLine }, StringSplitOptions.None)
-            }));
+                await CompleteWork(worker, job);
+                await Enqueue(job, true);
+            }
+            else
+            {
+                await _redis.ListRightPushAsync($"{_namespace}::failed", JsonConvert.SerializeObject(new
+                {
+                    work = GetWork(job, false),
+                    worker = worker.WorkerId,
+                    message = exc.Message,
+                    backtrace = exc.StackTrace.Split(new string[] { Environment.NewLine }, StringSplitOptions.None)
+                }));
+            }
         }
 
         private async Task ReclaimStuckWork(Worker worker)

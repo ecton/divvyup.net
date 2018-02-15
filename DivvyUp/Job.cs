@@ -8,6 +8,7 @@ namespace DivvyUp
     {
         public abstract string Queue { get; }
         public object[] Arguments { get; }
+        public int Retries { get; set; }
 
         public Job(params object[] arguments)
         {
