@@ -24,7 +24,7 @@ namespace DivvyUp
 
         public static IDatabase RedisDatabase { get => Redis.GetDatabase(); }
 
-        public static string Namespace { get; } = "divvyup";
+        public static string Namespace { get; set; } = "divvyup";
 
         public static Service Service { get => new Service(RedisDatabase, Namespace); }
 

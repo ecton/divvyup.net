@@ -30,6 +30,45 @@ namespace DivvyUp
             );
         }
 
+        public async Task<IEnumerable<string>> AllQueues()
+        {
+            var queues = await _redis.SetMembersAsync($"{_namespace}::queues");
+            return queues.Select(q => q.ToString());
+        }
+
+        public async Task<IEnumerable<JobStatus>> AllJobsInQueue(string queue)
+        {
+            var jobs = await _redis.ListRangeAsync($"{_namespace}::queue::{queue}");
+            return jobs.Select(j => JsonConvert.DeserializeObject<JobStatus>(j));
+        }
+
+        public async Task<IEnumerable<FailedJob>> AllFailedJobs()
+        {
+            var jobs = await _redis.ListRangeAsync($"{_namespace}::failed");
+            return jobs.Select(j => JsonConvert.DeserializeObject<FailedJob>(j));
+        }
+
+        public async Task<IEnumerable<WorkerStatus>> AllWorkers()
+        {
+            var result = new List<WorkerStatus>();
+            foreach (var worker in await _redis.HashGetAllAsync($"{_namespace}::workers"))
+            {
+                var status = new WorkerStatus();
+                status.Id = worker.Name;
+                status.LastCheckIn = DateTimeOffset.FromUnixTimeSeconds(int.Parse(worker.Value));
+                status.Queues = JsonConvert.DeserializeObject<string[]>(await _redis.HashGetAsync($"{_namespace}::worker::{status.Id}", "queues"));
+                var job = await _redis.HashGetAllAsync($"{_namespace}::worker::{status.Id}::job");
+                if (job.Length > 0)
+                {
+                    status.Job = job.Where(k => k.Name == "work").Select(v => JsonConvert.DeserializeObject<JobStatus>(v.Value)).FirstOrDefault() ?? new JobStatus();
+                    status.Job.StartedAt = DateTimeOffset.FromUnixTimeSeconds(job.Where(k => k.Name == "started_at").Select(v => int.Parse(v.Value)).FirstOrDefault());
+                }
+                result.Add(status);
+            }
+
+            return result;
+        }
+
         private object GetWork(Job job, bool retry)
         {
             return new
@@ -118,7 +157,7 @@ namespace DivvyUp
                     work = GetWork(job, false),
                     worker = worker.WorkerId,
                     message = exc.Message,
-                    backtrace = exc.StackTrace.Split(new string[] { Environment.NewLine }, StringSplitOptions.None)
+                    backtrace = exc.StackTrace.Split(new string[] { Environment.NewLine }, StringSplitOptions.None),
                 }));
             }
         }

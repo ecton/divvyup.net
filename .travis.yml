@@ -1,8 +1,28 @@
-language: csharp
-mono: none
-dotnet: 1.1.1
-dist: trusty
-install:
-  - dotnet restore
-script:
-  - dotnet test DivvyUp.Tests/DivvyUp.Tests.csproj
+stages:
+  - test
+  - deploy-web
+jobs:
+  include:
+    -
+      stage: test
+      language: csharp
+      mono: none
+      dotnet: 2.0
+      dist: trusty
+      install:
+        - dotnet restore
+      script:
+        - dotnet test DivvyUp.Tests/DivvyUp.Tests.csproj
+    -
+      stage: deploy-web
+      sudo: required
+      services:
+        - docker
+      language: csharp
+      dotnet: 2.0
+      dist: trusty
+      install:
+        - dotnet restore
+      script:
+        - dotnet build -c Release DivvyUp.Web
+        - docker build -t nilobject/divvyup-web
