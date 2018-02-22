@@ -1,0 +1,44 @@
+stages:
+  - test
+  - build
+  - deploy
+
+test:
+  stage: test
+  image: microsoft/dotnet:2.0-sdk
+
+  before_script:
+    - dotnet restore
+
+  script:
+    - dotnet test DivvyUp.Tests
+
+build-web:
+  stage: build
+  image: microsoft/dotnet:2.0-sdk
+
+  only:
+    - master
+
+  before_script:
+    - dotnet restore
+
+  script:
+    - dotnet publish DivvyUp.Web -c Release
+  
+  artifacts:
+    expire_in: 12 hrs
+    paths:
+      - DivvyUp.Web/bin/Release/netcoreapp2.0/publish
+
+deploy-web:
+  stage: deploy
+  image: dind
+
+  services: 
+    - docker:dind
+  
+  script:
+    - docker build -t divvyup/divvyup-web DivvyUp.Web
+    - docker tag divvyup/divvyup-web:latest divvyup/divvyup-web:$CI_BUILD_REF
+    
